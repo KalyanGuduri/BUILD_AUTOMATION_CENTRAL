@@ -1,0 +1,466 @@
+@ECHO off
+cls
+setlocal enabledelayedexpansion
+if EXIST C:\Informatica\10.2.0_HF1\clients\PowerCenterClient\domains.infa (
+set INFA_DOMAINS_FILE=C:\Informatica\10.2.0_HF1\clients\PowerCenterClient\domains.infa
+ ) ELSE (
+set INFA_DOMAINS_FILE=C:\Informatica\10.2.0\clients\PowerCenterClient\domains.infa )
+set INFA_HOME=C:\Informatica\10.2.0_HF1
+echo !INFA_DOMAINS_FILE! is found 
+
+set PATH=%PATH%;c:\Informatica\10.2.0_HF1\clients\PowerCenterClient\client\bin
+set CWD=%6
+set Log_Dir=!CWD!\logs
+SET INFA_REPO_NAME=%1
+SET INFA_DOMAIN=%2
+CD !CWD!
+SET ENC_USERNAME=%3
+SET ENC_PASS=%4
+
+Powershell.exe -executionpolicy remotesigned -File "decode.ps1" %3
+set /p INFA_PM_USER=<file.txt
+Powershell.exe -executionpolicy remotesigned -File "decode.ps1" %4
+set /p INFA_PM_PASSWORD=<file.txt
+del file.txt
+del FAIL.txt 2>>nul
+del Timestamps.txt
+del Input_Loc.txt 2>>nul
+SET FILE=%7
+CD !CWD!
+REM ECHO current: %CWD%
+
+	REM ======================== FOLDER CHECK  ==================================================
+
+	IF NOT EXIST c:\Informatica\10.2.0_HF1\clients\PowerCenterClient\client\bin (
+	ECHO INFORMATICA IS NOT INSTALLED IN THE SPECIFIED DIRECTORY
+	EXIT /B )
+	
+	IF NOT EXIST "!Log_Dir!" mkdir "!Log_Dir!"
+	
+	
+	
+	
+	REM ================== READ THE INPUT FOR SAME WORKFLOWS ============
+	
+	set count_before=0
+	set count_after=0
+	break > all.txt
+	break >!Log_Dir!\logfile.txt 
+	break >!Log_Dir!\errorlog.txt
+	
+	FOR /f "usebackq tokens=1-3 delims=," %%a in (!FILE!) do (
+	 ECHO %%b >> all.txt
+	)
+	
+	for /f %%C in ('Find /V /C "" ^< all.txt') do set count_before=%%C
+	powershell.exe   -ExecutionPolicy Bypass -NoLogo -NonInteractive -NoProfile  -Command "type all.txt |Sort-Object -unique |Out-File all_unique.txt"   >>!Log_Dir!\logfile.txt 2>>!Log_Dir!\errorlog.txt && ECHO Checking for Invalid Inputs .... || echo Powershell Read Unique Error && goto :break
+	for /f %%C in ('Find /V /C "" ^< all_unique.txt') do set count_after=%%C
+
+	
+	
+	REM ============ Validation =========================================
+	
+	if not %count_before% == %count_after% ( 
+		echo.
+		echo 2 Workflows Contain the Same Jira's 
+		echo.
+		echo To Avoid Overwriting remove the Conflicting Workflow 
+		echo.
+		echo Exiting.....
+		Exit /b
+	)
+	
+	if  %count_before% == %count_after% ( 
+		del all.txt 
+		del all_unique.txt
+
+	)
+	
+	
+	
+	
+	
+	REM ======================== SETS THE REPO INFORMATION ======================================
+
+	REM INTERACTIVE :  
+	REM	call Locations.bat 
+	REM END INTERACTIVE
+	
+	REM STATIC : 
+	 	REM set INFA_REPO_NAME=PC_REPO_STL_WEST_ILMD_DEV1
+		REM set INFA_DOMAIN=Domain_STL_WEST_DEV_SIT
+	REM END STATIC
+	
+	IF !INFA_REPO_NAME! == "" (
+	ECHO YOU DIDNT SELECT A VALID REPO NAME
+	EXIT /B
+	)
+	REM Echo.
+	REM ECHO REPO   : !INFA_REPO_NAME!
+	REM ECHO.
+	REM set /p resp= IS THIS WHERE YOU WANT TO CONNECT TO Y OR N : 
+			     REM IF /I NOT !resp!==Y  (
+			     REM ECHO EXITING...
+			     REM EXIT /B
+			     REM )
+	
+	REM CLS
+	REM ======================== SETS THE USERNAME/PASSWORD =====================================
+	
+	Echo.
+	Echo **************************** USER LOGIN ***********************************
+	Echo.
+	
+	
+	REM INTERACTIVE : 
+	REM set /p INFA_PM_USER= Enter User Name  
+	REM Call:InputPassword "Enter Password" INFA_PM_PASSWORD
+	REM SET SECURITY_DOMAIN=AD-ENT
+	
+	REM END INTERACTIVE  
+	
+	REM STATIC : 
+	
+	REM set INFA_PM_USER=ihub_test
+	REM set INFA_PM_PASSWORD=ihub_test
+	REM SET SECURITY_DOMAIN=Native
+	
+	REM END STATIC 
+
+	REM ======================== CONNECT TO INFORMATICA =========================================
+
+    SET SECURITY_DOMAIN=AD-ENT 
+	pmrep connect -r !INFA_REPO_NAME! -d  !INFA_DOMAIN! -n !INFA_PM_USER! -s !SECURITY_DOMAIN! -x !INFA_PM_PASSWORD!  
+	rem >>!Log_Dir!\logfile.txt 2>>!Log_Dir!\errorlog.txt
+
+		  IF NOT %ERRORLEVEL% == 0 (
+		  Echo.
+		  ECHO COULD NOT CONNECT
+		  EXIT /B
+		  )
+
+	ECHO.
+	ECHO LOGIN SUCCESSFUL !
+	
+	
+
+	REM ======================== SVN CONFIGURATION  =============================================
+	
+	REM ENSURE THERE ARE NO SPACES AFTER THE VARIABLES
+	
+	REM CALL svn_path.bat
+	rem set svnpath="https://wts-svn.usa.wachovia.net/ihub/trunk/Build_Automation_Central/ETL/!INFA_REPO_NAME!/"
+	set svnpath="%5"
+	
+	
+
+	FOR /f "tokens=2* delims=/" %%a in (!svnpath!) do (
+		set int_path=%%b
+	)
+
+	set outdir=!CWD!
+	
+	REM echo "output dir"
+	echo !outdir!
+	
+	
+	REM ======= LISTS ALL THE WORKFLOWS  ======================
+	
+	
+	
+	set outdir=!outdir:/=\!
+	
+	
+	REM ======================== MAKES LOCAL FOLDER TO SYNC WITH SVN ============================
+	SET %ERRORLEVEL%=0
+	IF not exist !outdir! (  
+		mkdir "!outdir!"  
+	)
+	 
+		REM IF NOT %ERRORLEVEL% == 0 (
+				REM ECHO COULD NOT MAKE THE DIR CHECK IF YOU HAVE PERMISSIONS 
+				REM EXIT /B
+				REM )
+				
+		
+	CD "!outdir!"
+	CD..
+	REM echo "Before checkout location "
+	echo %cd%
+	REM svn checkout --username=!INFA_PM_USER! --password=!INFA_PM_PASSWORD! !svnpath!  && ECHO Checked out  || echo Git Timeout Exception Please Retry goto :break
+	
+	
+	
+	REM CD "!outdir!"
+	REM To make sure the folder is in sync
+	
+	REM svn revert "!outdir!\" --depth infinity     && ECHO.Reverted   || ECHO REVERTING SVN ERROR && goto :break
+	REM svn cleanup "!outdir!\" --remove-unversioned  && ECHO.Cleaned Up   || ECHO CLEANUP SVN ERROR && goto :break
+	
+	
+	
+	cd !CWD!
+	
+FOR /f "usebackq tokens=1-6 delims=," %%a in (!FILE!) do (
+
+
+
+cd !CWD!
+
+	REM ================================ SETS THE VARIABLES =====================================
+	
+	ECHO.
+	set OBJECT_TYPE="WORKFLOW"
+	set WORKFLOW_NAME=%%b
+	set INFA_FOLDER_NAME=%%c
+	set JIRA_NO=%%a
+	
+	rem Removing White spaces 
+	
+	set WORKFLOW_NAME=!WORKFLOW_NAME: =!
+	set JIRA_NO=!JIRA_NO: =!
+	set JIRA_NO=!JIRA_NO:_=-!
+	set INFA_FOLDER_NAME=!INFA_FOLDER_NAME: =!
+	
+	set USER_COMMENT=%%d
+	
+	if  not "!USER_COMMENT!"=="" (
+	set USER_COMMENT=!USER_COMMENT: =_!
+	)
+	
+	if  "!USER_COMMENT!"=="" (
+	  set USER_COMMENT=!JIRA_NO! 
+	  )
+	
+
+	
+	
+	
+	set OUTPUT_DIR=!outdir!
+	set OUTPUT_LOC=!outdir!\\\\!WORKFLOW_NAME!.xml
+	set OUTPUT_LOC=!OUTPUT_LOC:/=\!
+	set INP_LOC_TXT_PATH=!OUTPUT_LOC:\\\\=\!
+	set OUTPUT_DIR=!OUTPUT_DIR:/=\!
+	set INP_LOC_TXT_PATH =!INP_LOC_TXT_PATH:	=!
+	set INP_LOC_TXT_PATH =!INP_LOC_TXT_PATH: =!
+	set JIRA_NO =!JIRA_NO: =!
+	set INP_LOC_TXT_PATH =!INP_LOC_TXT_PATH:\\=\!
+	echo https://wfs-github.wellsfargo.com/IHUB/Build_Automation_Central/trunk/ETL/!INFA_REPO_NAME!/!INFA_FOLDER_NAME!,!INP_LOC_TXT_PATH!,!JIRA_NO!>>Input_Loc.txt	
+	
+	
+
+		IF "!INFA_REPO_NAME!"=="" (
+			ECHO.
+			ECHO  YOU DIDNT ENTER A JIRA NUMBER 
+			EXIT /B
+			)
+		IF "!WORKFLOW_NAME!"=="" (
+			ECHO.
+			ECHO  YOU DIDNT ENTER A WORKFLOW NAME 
+			EXIT /B
+			)
+
+
+	Echo.
+	ECHO EXPORTING Workflow : !WORKFLOW_NAME! 
+	Echo.
+	For /f "tokens=2-4 delims=/ " %%a in ('date /t') do (set mydate=%%c-%%a-%%b)
+    For /f "tokens=1-2 delims=/:" %%a in ('time /t') do (set mytime=%%a%%b)
+    echo INFORMATICA PMREP for exporting !WORKFLOW_NAME! started at !mydate!_!mytime!
+	REM ======================== CHECK IN DEPENDENCIES ==========================================
+	
+	call CheckIn_All.bat
+	
+	
+	IF  NOT !checkin_worked! == 0 ( 
+	ECHO THERE WAS AN ERROR IN CHECKING IN 
+	EXIT /B 
+	)
+	ECHO.
+	
+	for /f "usebackq tokens=1-2 delims=," %%a in ("check.log") do (
+	
+		REM ======================= CHECKS THE LOG FILE FOR ERRORS AND DISPLAY ==============================
+			if %%a == 0 (
+			set mapleft=%%b
+			for /f "tokens=2,3 delims=-" %%c in (!mapleft!) do  ( 
+			
+			set mapleftvar=%%c 
+			set mapleftvar=!mapleftvar:~1,-1!
+			set mapleftvar1=%%d
+			set mapleftvar1=!mapleftvar1:~1,-1!
+			echo SUCCESS -- !mapleftvar! -- !mapleftvar1!
+			)	
+			
+			)
+			if %%a == 1 (
+			
+			
+			set mapleft=%%b
+			for /f "tokens=2,3 delims=-" %%c in (!mapleft!) do  ( 
+			
+			set mapleftvar=%%c 
+			set mapleftvar=!mapleftvar:~1,-1!
+			set mapleftvar1=%%d
+			set mapleftvar1=!mapleftvar1:~1,-1!
+			echo FAILURE -- !mapleftvar! -- !mapleftvar1!
+			)
+			
+			
+		  )
+	)
+	del pmrep*.log
+	
+	echo.
+	
+	for /f "usebackq tokens=1-2 delims=," %%a in ("check.log") do (
+	
+		REM ======================= CHECKS THE LOG FILE FOR ERRORS and EXIT ==============================
+			
+			if %%a == 1 (
+			echo There was an error with checking in. 
+			echo Please Check In the Failed Objects With the Right Credentials
+			echo Also Close the Mapping if Open 
+			exit /b
+		  )
+	)
+
+
+	
+	
+	ECHO.
+	ECHO CREATING XML FILE
+	ECHO.
+	REM set svnpath1=!svnpath:"=!
+	REM echo !svnpath1!!INFA_FOLDER_NAME!,!OUTPUT_LOC!,!JIRA_NO! > Input_Loc.txt
+
+		
+	
+	pmrep objectexport -n !WORKFLOW_NAME! -o !OBJECT_TYPE! -f !INFA_FOLDER_NAME!  -m -s -b -r -u "!OUTPUT_LOC!" >>!Log_Dir!\logfile.txt 2>>!Log_Dir!\errorlog.txt && ECHO XML FILE GENERATED || ECHO ERROR WITH OBJECT EXPORT && goto :break
+
+	
+	REM pmrep createlabel -a !JIRA_NO!  >nul 2>nul
+	REM pmrep applylabel -a !JIRA_NO! -n !WORKFLOW_NAME! -o Workflow -f !INFA_FOLDER_NAME! -p both -s -m  >nul 2>nul
+	REM pmrep AssignPermission -o label -n  !JIRA_NO! -g Others -p rwx >nul 2>nul
+	
+	
+	
+	REM ===================== CREATES/UPDATES JIRA FOLDER TO SVN ================================
+	
+	
+	REM set flag=0
+	
+	REM creates a folder for the Jira Number
+	REM IF NOT EXIST  "!OUTPUT_DIR!!INFA_FOLDER_NAME!" (
+	
+	REM set flag=1
+		
+		REM CD  "!OUTPUT_DIR!"
+		REM MKDIR !INFA_FOLDER_NAME!
+
+				REM IF NOT %ERRORLEVEL% == 0 (
+				REM ECHO COULD NOT MAKE THE DIR CHECK IF YOU HAVE PERMISSIONS 
+				REM EXIT /B
+				REM )
+				
+			
+
+		REM move /Y  "!OUTPUT_LOC!" "!OUTPUT_DIR!!INFA_FOLDER_NAME!" && ECHO.Moved file to !INFA_FOLDER_NAME!  || ECHO ERROR MOVING FILE && goto :break
+		REM Echo.
+		REM svn add  "!OUTPUT_DIR!!INFA_FOLDER_NAME!!" && ECHO.Added to SVN || goto :break
+		REM Echo.
+		REM svn commit -m "!JIRA_NO!" --force-log  && ECHO.Commited to SVN || goto :break
+		REM svn update
+		REM Echo.
+		REM ECHO UPDATED SVN
+	
+	
+	REM )
+
+	REM IF the file already exists to update
+	
+
+	REM CD  "!OUTPUT_DIR!"
+	
+	REM if !flag! == 0 (
+	
+	REM IF EXIST  "!OUTPUT_DIR!!INFA_FOLDER_NAME!/!WORKFLOW_NAME!.xml" (
+	REM set flag=1
+		REM IF EXIST   "!OUTPUT_LOC!" (
+					REM /y supresses override confirmation IF file exists
+					REM move /Y  "!OUTPUT_LOC!"  "!OUTPUT_DIR!!INFA_FOLDER_NAME!"  && ECHO.Moved file to !INFA_FOLDER_NAME!  ||  ECHO ERROR MOVING FILE &&  goto :break
+					REM Echo.
+					REM svn update  "!OUTPUT_DIR!!INFA_FOLDER_NAME!/!WORKFLOW_NAME!.xml" && ECHO.Updated SVN || goto :break
+					REM Echo.
+					REM svn commit -m "!JIRA_NO!" --force-log  && ECHO.Commited to SVN || goto :break
+					REM svn update
+					REM )
+					REM Echo.
+					REM ECHO UPDATED SVN
+				
+	REM )
+	REM )
+	
+	REM IF the JIRA exists then add to the folder
+	REM if !flag! == 0 (
+	
+	REM IF NOT EXIST  "!OUTPUT_DIR!!INFA_FOLDER_NAME!/!WORKFLOW_NAME!.xml" (
+	REM set flag=1
+		REM move /Y  "!OUTPUT_LOC!" "!OUTPUT_DIR!!INFA_FOLDER_NAME!"  && ECHO.Moved file to !INFA_FOLDER_NAME!  || ECHO ERROR MOVING FILE &&  goto :break
+		REM Echo.
+		REM svn add  "!OUTPUT_DIR!!INFA_FOLDER_NAME!/!WORKFLOW_NAME!.xml"   && ECHO.Added to SVN || goto :break
+		REM Echo.
+		REM svn commit -m "!JIRA_NO!" --force-log  && ECHO.Commited to SVN || goto :break
+		REM svn update
+		REM Echo.
+		REM ECHO UPDATED SVN
+		
+		REM )
+REM )
+
+	Echo.
+	
+    For /f "tokens=2-4 delims=/ " %%a in ('date /t') do (set mydate=%%c-%%a-%%b)
+    For /f "tokens=1-2 delims=/:" %%a in ('time /t') do (set mytime=%%a%%b)
+    echo INFORMATICA PMREP for exporting !WORKFLOW_NAME! ended at !mydate!_!mytime!
+
+
+ )
+ 
+ 
+ 
+ )
+
+
+
+
+cd !cwd!
+
+Powershell.exe -executionpolicy remotesigned -File "decode.ps1" %3
+set /p GIT_PM_USER=<file.txt
+set GIT_PM_PASSWORD=%4
+
+REM echo !GIT_PM_PASSWORD!
+
+Powershell.exe -executionpolicy remotesigned -File "File_Upload.ps1" "BuildAutomation" !GIT_PM_USER! %4
+
+if exist FAIL.txt (
+echo Could not access GIT
+exit /B
+)
+ 
+
+del outputfile.csv >nul 2>nul
+REM del check.log >nul 2>nul
+echo.
+ECHO JOB COMPLETED !
+echo.
+
+EXIT /B
+
+:break
+del outputfile.csv >nul 2>nul
+Echo.
+ECHO Script Failed due to the above Error
+
+EXIT /B

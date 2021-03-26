@@ -1,0 +1,602 @@
+﻿# Title       :  Script for Finding and Exporting Files In SVN for Packaging Based On Jira Number
+#
+# Description :  Scans the Items in folder list SVN
+#                Picks the file with the Specified Jira 
+#                Organize it and Upload
+#   #             
+
+$env:Path += "C:\Program Files\Git\bin"
+$ErrorActionPreference='Ignore'
+git config --global http.sslVerify false
+#Remove-Item .\Timestamps.txt -Force 2>>$null
+$TS_CWD = (get-location).path
+$script_start_datetime = get-date
+#$script_name = $MyInvocation.MyCommand.Name
+echo "DBPacking.ps1 started at $script_start_datetime" | out-file -Append $TS_CWD\Timestamps.txt -Encoding ascii;
+
+
+Function Make-SvnList ($svnPath,$SvnList1) {
+
+# search the folder completely
+
+try
+{
+
+            echo "Checking $svnpath"
+            #svn list --depth infinity "$svnPath"  | Out-File -Append "$SvnList1" -Encoding ascii;
+			git ls-tree --name-only head Database -r  | Out-File -Append "$SvnList1" -Encoding ascii;
+ }
+
+ catch 
+ {
+ Echo "Unable to make GIT List"
+    Write-Host "Unable to make GIT List" -ForegroundColor Red
+    exit
+ }
+
+}
+    
+
+
+
+ 
+function Make-TextFileList ($FolderLoc, $TxtFileName) {
+
+# Get all the textfiles
+# add the exec symbol 
+# append to single file
+
+try
+{
+    $NameList = @()
+      if ( Test-Path $FolderLoc) { 
+        cd "$FolderLoc"
+        $NameList += Get-ChildItem | where {$_ -match ".txt"} | Select-Object "Name"
+
+        foreach ($name in $NameList)
+        {
+            
+        $execString = "@./"+$name.Name
+        $execString| Out-File $TxtFileName -Append
+        }
+   }
+
+   }
+
+   catch
+   {
+   Echo "There was an Error In creating the Text File List"
+   Write-Host "There was an Error In creating the Text File List" -ForegroundColor Red
+   exit
+   }
+}
+
+
+Function MakeAndMove-T_Folders ($RunLoc,$TargetName) {
+
+# Get the files which match Public [TargetName]
+# Make the Folder[TargetName - Public]
+# Move all the items with [TargetName - Public] to [TargetName - Public ] Folder
+
+try
+{
+    if ( Test-Path $RunLoc) { 
+   cd "$RunLoc"
+
+   $create_public =  Get-ChildItem | where {$_.name -match "$TargetName"}    
+   $list_to_move =@()
+   $list_to_move +=  Get-ChildItem | where {$_.name -match "$TargetName"}
+ 
+    if ( $create_public.Count -gt 0 )
+    {
+    #echo  $RunLoc
+     
+      New-Item -Name $TargetName -ItemType directory
+      cd "$RunLoc"
+       
+       for ($l=0 ; $l -lt $list_to_move.count;$l++)
+           {
+             $source= Join-Path -ChildPath $list_to_move[$l].Name -Path $RunLoc
+             $target= Join-Path -ChildPath $list_to_move[$l].Name -Path $RunLoc\$TargetName
+             Move-Item -Path $source -Destination $target
+           }
+
+       }
+    }
+
+  }
+  catch
+  {
+  Echo "There was an Error with Making And Moving to Folder For $TargetName"
+  Write-Host "There was an Error with Making And Moving to Folder For $TargetName" -ForegroundColor Red
+  exit
+  }
+}
+
+Function Make-TextFiles ($path) {
+
+# Get all the sql filenames
+# Remove from jira number till the end
+# get the unique list -- sort in desceding order 
+#         To avoid IHUB MOVING INTO IHUB_APP FOLDER
+#         Keeps a global seen varaible so that same file cant be written in diff txt files
+# For Schema get its sql files and make a text file
+ 
+ 
+ try
+ {
+
+ if ( Test-Path $path) { 
+ cd $path
+$var = @()
+$var += Get-ChildItem -File | Select-Object Name | where {$_.name -match ".sql"}
+$out = @()
+#$pattern_txt="_${Jira_Pattern}_?[0-9A-Z_-]*.sql"
+$pattern_txt="_IHUB(BAU|PS)+_?[0-9A-Z_-]*.sql"
+
+
+for ($a=0; $a -lt $var.Count ; $a++) 
+{
+ $out +=  $var[$a].Name -ireplace "$pattern_txt", ""
+ 
+ 
+}
+
+
+
+
+$uniq=@()
+$uniq += $out | Sort-Object -Property length  -Descending | Get-Unique
+$seen = @()
+
+
+
+for ($a=0; $a -lt $uniq.count ; $a++) 
+{
+ #echo $uniq[$a]
+ $val = @()
+ $val += Get-ChildItem  | Select-Object Name | where {$_.Name -match $uniq[$a] } | where {$_.Name -match ".sql"}
+ echo `r`n
+ echo $val
+ # make file
+ $SvnList=$uniq.get($a)+".txt"
+
+ New-Item -Name $SvnList -type file
+
+ #insert into file
+ for ($b=0; $b -lt $val.count ; $b++) 
+    {
+     
+    
+      if ( !$seen.Name )
+      {
+         
+        $execString = "@./"+$val.get($b).Name
+        $execString| Out-File $SvnList -Append
+        $seen += $val[$b]
+        
+      }
+   
+ 
+      if ( !$seen.Name.Contains($val.get($b).Name)  )
+      {
+        
+        $execString = "@./"+$val.get($b).Name
+        $execString | Out-File $SvnList -Append
+        $seen += $val[$b]
+
+        }
+
+    }
+
+     }
+
+}
+}
+
+catch{
+Echo "There was an error in making the text file"
+write-host "There was an error in making the text file" -ForegroundColor Red
+exit
+}
+}
+
+
+Function SpoolFileContentValidator ($Path) {
+
+cd "$Path"
+
+$var = @()
+$var += Get-ChildItem -File | Select-Object Name | where {$_.name -match ".sql"}
+echo $var
+
+for ($a=0; $a -lt $var.Count ; $a++) 
+{
+	        $content = Get-Content $var[$a].Name -Encoding UTF8 -Raw
+			$spool_list=@()
+			$content -imatch "(Spool.*)" > $null 
+            $spool_list += $matches.values
+            $matches = $null
+
+			$spool_off = @()
+			$content -imatch "(Spool .*off.*)" > $null
+            if  ($matches.values -ne $null )
+            {
+            $spool_off += $matches.values
+            }
+
+			if ($spool_list.count -gt 0)
+			{
+                $filename=$var[$a].Name
+                $list_name=  $filename -replace ".sql" , ""
+				$ptrn=$spool_list[0]
+				if ( $ptrn -imatch "(Spool .*off.*)")
+				{
+                 $content = "spool $list_name.lst ; "  +  $content
+                 
+                 Set-Content -Path $filename -Value $content -Encoding UTF8
+					break
+				}
+				
+				
+				
+				echo $filename
+				$content = $content -replace "$ptrn","spool $list_name.lst ;" 
+				Set-Content -Path $filename -Value $content -Encoding UTF8
+			}
+
+
+	if ($spool_off.count -eq 0)
+	{
+		"Spool off ; " |  Out-File $var[$a].Name -Append -Encoding UTF8
+	}
+
+}
+
+
+
+}
+
+
+# ===================== Read the Properties File / Inital Config ===================
+
+$script_start_datetime = get-date
+#$script_name = $MyInvocation.MyCommand.Name
+echo "DBPacking.ps1 started at $script_start_datetime" | out-file -Append $TS_CWD\Timestamps.txt -Encoding ascii;
+
+$date_here = get-date
+echo "Initial configuration process started at $date_here" | out-file -Append $TS_CWD\Timestamps.txt -Encoding ascii;
+
+
+
+try 
+{
+$cwd = $args[0]
+cd $cwd
+$AppProps = convertfrom-stringdata (get-content ./properties.txt -raw)
+
+
+
+
+@("Jira") +  (Get-Content .\Input_Loc.txt ) | Set-Content .\Input_Loc.txt
+$Locs = Import-CSV "Input_Loc.txt"
+
+$inputJira = @()
+$inputJira += $locs.Jira | Sort-Object -Unique | ? {$_}
+
+
+
+$cwd = Get-Location
+$SvnList = "svn_list.txt";
+$OutFile = "FOUND.TXT";
+
+
+$FolderList = @()
+$FolderList += $AppProps.'app.svn_location'
+
+
+
+$Folder = $AppProps.'app.package_name'
+$Public_Folder = $AppProps.'app.public_folder'
+$Private_Folder = $AppProps.'app.private_folder'
+$Jira_Pattern=$AppProps.'app.jira_pattern'
+$UploadLoc1=$AppProps.'app.upload_location'
+
+
+$SvnPath1 =  $UploadLoc1 -split "/"
+$UploadFolder1 = $SvnPath1[-1]
+
+
+If (Test-Path "$cwd\$UploadFolder1"){ Remove-Item -path "$cwd\$UploadFolder1"   -Recurse -Force }
+ If (Test-Path FOUND.txt){ Remove-Item FOUND.txt }
+  If (Test-Path FOUND1.txt){ Remove-Item FOUND1.txt }
+   If (Test-Path svn_list.txt ){ Remove-Item svn_list.txt }
+
+# TO-DO If the folder is null add dummy_public
+
+if ($Public_Folder -eq "")
+{
+$Public_Folder="DUMMY_PUBLIC"
+}
+if ($Private_Folder -eq "" )
+{
+$Private_Folder="DUMMY_PRIVATE"
+}
+
+
+if( -not($Folder  ))
+{
+Echo "The Package Name was Not Entered `r`nPlease Check the Properties File"
+Write-Host "The Package Name was Not Entered `r`nPlease Check the Properties File" -ForegroundColor Red
+exit
+}
+
+
+
+}
+
+catch 
+{
+	Echo "There was an error in Input Files `r`nPlease check the Properties and Input Files"
+    Write-Host "There was an error in Input Files `r`nPlease check the Properties and Input Files" -ForegroundColor Red
+   exit
+}
+
+Git clone --no-checkout "https://wfs-github.wellsfargo.com/IHUB/Build_Automation_Central.git" 
+cd .\Build_Automation_Central
+
+
+
+$Iteration_List1 = @()
+#$Iteration_List1 += svn list $UploadLoc1
+#$Folder="$Folder/"
+$Iteration_List1 += git ls-tree --name-only head Database_Output\
+$Folder="Database_Output/$Folder"
+if ( $Iteration_List1.Contains($Folder))
+{
+Echo "The Package Name Already exists In GIT Please Rename"
+Write-Host "The Package Name Already exists In GIT Please Rename " -ForegroundColor Red
+exit
+}
+
+$date_here = get-date
+echo "Initial configuration process ended at $date_here" | out-file -Append $TS_CWD\Timestamps.txt -Encoding ascii;
+
+# ===================== Scans The folders and Finds Jira ===================
+
+$date_here = get-date
+echo "Scanning GIT for input JIRA process started at $date_here" | out-file -Append $TS_CWD\Timestamps.txt -Encoding ascii;
+
+$csv = $inputJira
+
+for ($i=0; $i -lt $FolderList.length; $i++) {
+
+ECHO "CHECKING GIT ......"
+#svn list --depth infinity  $FolderList[$i]   | Out-File -Append $SvnList -Encoding ascii;
+Make-SvnList   $FolderList[$i] $SvnList
+
+$date_here = get-date
+echo "Scanning GIT for input JIRA process ended at $date_here" | out-file -Append $TS_CWD\Timestamps.txt -Encoding ascii;
+  
+#Use this if you dont want it to search only for iteration Numbers in folders having iteration num
+#$output += get-content $SvnList -ReadCount 1000 |  foreach { $_ -like "*$Jira*.sql" };
+
+# checks for 3 different variations [ Jira_num | Jira-Num | JiraNum ]
+try
+{
+$output = @()
+$output += get-content $SvnList -ReadCount 1000 | foreach  {
+    foreach ($lvl in $_)
+    {
+        foreach ( $obj in $csv )
+        {
+            
+            $content = $obj
+            $Ji = [regex]::Match("$content",'((?:[A-Za-z]+)).*?(\d+)').captures.groups[1].value
+            $Nu = [regex]::Match("$content",'((?:[A-Za-z]+)).*?(\d+)').captures.groups[2].value
+            $P1 = $Ji +"_"+ $Nu
+            $P2 = $Ji +"-"+ $Nu
+            $P3 = $Ji + $Nu
+            if ($lvl -match ".sql") 
+            {
+               if ( ($lvl -match "${p1}(_|\.)") -or ($lvl -match "${p2}(_|\.)" ) -or ($lvl -match "${p3}(_|\.)") )
+               {
+                 echo $lvl
+               }
+            }
+
+            # TODO : NEED TO CHECK IF JIRA MATCHES WITH JIRA_PATTERN
+        }
+    }
+} 
+
+}
+
+catch 
+{
+Echo "The pattern of [Jira]_[NUMBER] didnt Match in the Input File  "
+ Write-Host "The pattern of [Jira]_[NUMBER] didnt Match in the Input File  " -ForegroundColor Red
+ exit
+}
+
+# FileNames in Found1.txt
+# Full SVN Path in Found.txt
+
+    for ($j=0; $j -lt $output.Count; $j++) {
+        if ( $output[$j] -eq $null )
+           {break}
+
+         Echo  $output[$j].Split("/")[-1] | Out-File -Append FOUND1.txt -Encoding ascii;
+         #$FileLoc =  $FolderList[$i]+"/"+ $output[$j];
+		 $FileLoc =  $output[$j]
+         Echo $FileLoc | Out-File -Append FOUND.txt -Encoding ascii;
+         #Echo $FileLoc;
+    }
+    
+  Remove-Item $SvnList
+
+} 
+
+if ( -not ( (Test-Path FOUND1.txt) -and (Test-Path FOUND.txt )))
+{
+Echo "The Jira's specified were NOT Present In GIT "
+ Write-Host "The Jira's specified were NOT Present In GIT " -ForegroundColor Red
+ exit
+}
+
+$found_t1 = get-content FOUND1.txt
+$found_t2 = get-content FOUND.txt 
+
+if(( $found_t1 -eq $null ) -and ($found_t2 -eq $null ))
+{
+Echo "The Jira's specified were NOT Present In GIT "
+Write-Host "The Jira's specified were NOT Present In GIT " -ForegroundColor Red
+exit
+}
+
+
+
+
+
+# =================== Make the folder and export ======================
+
+$date_here = get-date
+echo "Export from GIT to local process started at $date_here" | out-file -Append $TS_CWD\Timestamps.txt -Encoding ascii;
+
+cd ..
+    New-Item -Name $Folder -ItemType directory
+    cd "$cwd\$folder"
+	cd "$cwd"
+    cd .\Build_Automation_Central		 							 
+    $found =@()
+   # $found +=  get-content "$cwd\$OutFile"
+    $found +=  get-content "$cwd\Build_Automation_Central\$OutFile"
+
+    #echo $found.Length
+
+    
+    for ($k=0; $k -lt $found.length; $k++) {
+       #SVN export $found[$k];
+		git checkout head $found[$k];							
+    }
+
+Get-ChildItem *.sql -Recurse | foreach-object {move-item $_ -destination $cwd\$folder  }
+									  
+cd "$cwd\$folder"   
+# This data would come from the UI and it would always begin with Public_atomic
+# Making these files as part of Output
+#Move-Item "$cwd\glimmer_data\*" "$cwd\$folder\"
+
+
+MakeAndMove-T_Folders "$cwd\$Folder" "Public"
+MakeAndMove-T_Folders "$cwd\$Folder\Public" "Rollback"
+MakeAndMove-T_Folders "$cwd\$Folder\Public" "Public"
+MakeAndMove-T_Folders "$cwd\$Folder" "Private"
+MakeAndMove-T_Folders "$cwd\$Folder\Private" "Rollback"
+MakeAndMove-T_Folders "$cwd\$Folder\Private" "Private"
+
+
+cd "$cwd\$Folder"
+
+ if ( Test-Path $cwd\$Folder\Public\Public ) { Make-TextFiles "$cwd\$Folder\Public\Public" }
+ if ( Test-Path $cwd\$Folder\Public\Rollback ) { Make-TextFiles "$cwd\$Folder\Public\Rollback"}
+ if ( Test-Path $cwd\$Folder\Private\Private ) { Make-TextFiles "$cwd\$Folder\Private\Private"}
+ if ( Test-Path $cwd\$Folder\Private\Rollback ) { Make-TextFiles "$cwd\$Folder\Private\Rollback"}
+
+
+ 
+
+ 
+  Make-TextFileList "$cwd\$Folder\Public\Public"  "Public_List.txt"
+  Make-TextFileList "$cwd\$Folder\Public\Rollback" "Public_Rollback_List.txt"
+  Make-TextFileList "$cwd\$Folder\Private\Private" "Private_List.txt"
+  Make-TextFileList "$cwd\$Folder\Private\Rollback" "Private_Rollback_List.txt" 
+
+ 
+
+#if ( Test-Path "$cwd\$Folder\Public\Public"   ) { SpoolFileContentValidator "$cwd\$Folder\Public\Public"     }
+#if ( Test-Path "$cwd\$Folder\Public\Rollback" ) { SpoolFileContentValidator "$cwd\$Folder\Public\Rollback"   }
+#if ( Test-Path "$cwd\$Folder\Private\Private" ) { SpoolFileContentValidator "$cwd\$Folder\Private\Private"   }
+#if ( Test-Path "$cwd\$Folder\Private\Rollback") { SpoolFileContentValidator "$cwd\$Folder\Private\Rollback"  }
+
+cd "$cwd\$Folder"
+
+if ( Test-Path $cwd\$Folder\Public\Rollback  ) {  Rename-Item -NewName $cwd\$Folder\Public\Public_Rollback -Path $cwd\$Folder\Public\Rollback   }
+if ( Test-Path $cwd\$Folder\Private\Rollback  ) {  Rename-Item -NewName $cwd\$Folder\Private\Private_Rollback -Path $cwd\$Folder\Private\Rollback   }
+if ( Test-Path $cwd\$Folder\Private ) {  Rename-Item -NewName $cwd\$Folder\$Private_Folder -Path $cwd\$Folder\Private }
+if ( Test-Path $cwd\$Folder\Public  ) {  Rename-Item -NewName $cwd\$Folder\$Public_Folder -Path $cwd\$Folder\Public   }
+
+
+if ( Test-Path "$cwd\$Folder\DUMMY_PUBLIC" ) {  Remove-Item -path "$cwd\$Folder\DUMMY_PUBLIC"   -Recurse -Force  }
+if ( Test-Path "$cwd\$Folder\DUMMY_PRIVATE" ) {  Remove-Item -path "$cwd\$Folder\DUMMY_PRIVATE"   -Recurse -Force  }
+
+    
+
+
+#SVN export $FileLoc;
+cd $cwd
+$Utf8NoBomEncoding = New-Object System.Text.UTF8Encoding($False)
+foreach($i in ls -recurse -filter "*.sql") {
+    $MyFile = Get-Content $i.fullname 
+    [System.IO.File]::WriteAllLines($i.fullname, $MyFile, $Utf8NoBomEncoding)
+}
+foreach($i in ls -recurse -filter "*.txt") {
+    $MyFile = Get-Content $i.fullname 
+    [System.IO.File]::WriteAllLines($i.fullname, $MyFile, $Utf8NoBomEncoding)
+}
+
+$date_here = get-date
+echo "Export from GIT to local process ended at $date_here" | out-file -Append $TS_CWD\Timestamps.txt -Encoding ascii;
+
+# ===================== svn upload ================================   
+
+$date_here = get-date
+echo "GIT upload process started at $date_here" | out-file -Append $TS_CWD\Timestamps.txt -Encoding ascii;
+
+try 
+{ 
+$UploadLoc = $AppProps.'app.upload_location'
+svn checkout --depth empty $UploadLoc
+$SvnPath =  $UploadLoc -split "/"
+$UploadFolder = $SvnPath[-1]
+
+
+$UserInput = $AppProps.'app.package_name'
+Move-Item -Path $UserInput -Destination $UploadFolder -Force
+
+$Upload = 'Y'
+if($Upload -eq 'Y')
+{
+
+SVN add $UploadFolder/$UserInput
+SVN commit $UploadFolder -m "$UserInput"
+#GIT push $UploadFolder/$UserInput
+
+}
+}
+
+catch 
+{
+Echo "There was an error while uploading to svn Please Check the Upload location in the properties files "
+ Write-Host "There was an error while uploading to svn Please Check the Upload location in the properties files " -ForegroundColor Red
+ exit
+}
+
+$date_here = get-date
+echo "GIT upload process ended process started at $date_here" | out-file -Append $TS_CWD\Timestamps.txt -Encoding ascii;
+
+# ==================== Job Completed CleanUp ======================
+cd $cwd
+ECHO "JOB COMPLETED"
+$script_end_datetime = get-date
+#$script_name = $MyInvocation.MyCommand.Name
+echo "DBPacking.ps1 ended at $script_end_datetime" | out-file -Append $TS_CWD\Timestamps.txt -Encoding ascii;
+$DATE_DIFF = $script_end_datetime - $script_start_datetime
+$DIFF_HOURS = $DIFF.Hours
+ $DIFF_MINS = $DIFF.Minutes
+ $DIFF_SECS = $DIFF.Seconds
+ $DIFF_TOT = "$DIFF_HOURS"+":"+"$DIFF_MINS"+":"+"$DIFF_SECS"
+ echo "Total run time is $DIFF_TOT" | out-file -Append $TS_CWD\Timestamps.txt -Encoding ascii;
+Remove-Item -path "$cwd\$UploadFolder"   -Recurse -Force
+Remove-Item FOUND.txt
+Remove-item FOUND1.txt

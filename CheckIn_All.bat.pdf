@@ -1,0 +1,130 @@
+@echo off
+set  checkin_worked=1
+setlocal EnableExtensions DisableDelayedExpansion
+REM 1 -- THERE IS AN ERROR 0 -- NO ERROR
+
+set /A "INDEX=0"
+call set "$BATCH[%%INDEX%%]=echo execution"
+
+
+REM %%b is folder name %%c is Object Name %%d is Object Type %%g is reusable or non reusable
+
+REM ============================================= Checking All =====================================================================
+echo.
+echo =================== Checking All  Dependencies ===================
+
+	pmrep ListObjectDependencies -n %WORKFLOW_NAME% -o %OBJECT_TYPE% -f %INFA_FOLDER_NAME% -d all -p both -u outputfile.csv  >nul
+		IF NOT %ERRORLEVEL% == 0 (
+				ECHO.
+				ECHO COULD NOT LIST OBJECTS FOR %WORKFLOW_NAME% CHECK WORKFLOW NAME
+				EXIT /B
+	)
+	
+	
+	REM pmrep ListObjectDependencies -n %WORKFLOW_NAME% -o %OBJECT_TYPE% -f %INFA_FOLDER_NAME% -d workflow -p both -u outputfiles.csv  >nul
+	REM type outputfiles.csv >> final.csv
+	
+	ECHO.
+	ECHO VALIDATING............
+	ECHO.
+	
+	pmrep validate -i outputfile.csv  >nul && ECHO VALIDATION COMPLETE  || (Echo ISSUE WITH VALIDATION & goto :break)
+
+
+	for /f "usebackq tokens=1-7 delims=," %%a in ("outputfile.csv") do (
+		
+		
+		REM ================================================= CHECK IN ONLY THOSE OBJECTS THAT CAN BE CHECKED IN  =================================
+		
+		if %%g == reusable (
+		  
+		  echo Checking in %%c -- %%d
+		   call set "$BATCH[%%INDEX%%]=pmrep checkin -o "%%d" -t "%%e" -n "%%c" -f "%%b" -c %USER_COMMENT%"
+		   set /A "INDEX+=1"
+				  )
+				
+	  
+	  
+	  if %%e == none  (
+	  if not %%d == scheduler (
+	  	    if not %%d == sessionconfig (
+	  if not %%d == session (
+	  if not "%%d" =="User Defined Function" (
+	  echo Checking in %%c -- %%d
+			   call set "$BATCH[%%INDEX%%]=pmrep checkin -o "%%d"  -n %%c -f %%b -c %USER_COMMENT%"
+			    set /A "INDEX+=1"
+						)		
+		)
+	  )
+	  )
+	  )
+	  
+	 )
+Echo.
+Echo Start Check-In .....
+	 
+	 for /F "tokens=1,* delims==" %%I in ('set $BATCH[') do (
+
+	setlocal EnableDelayedExpansion
+	call set cmd2exec=%%~J
+	call set cmd2exec=!cmd2exec:-n =-n "!
+	call set cmd2exec=!cmd2exec: -f=" -f!		
+    start "" /MIN cmd /C rem/ ^& !cmd2exec! ^& ^> "%%~dpnJ.log" call echo ^^%%ErrorLevel^^%%
+endlocal
+	)
+
+	
+	
+rem // Deplete summary log file:
+> "check.log" rem/
+
+rem // Polling loop to check whether individual log files are available:
+:POLLING
+rem // Give processor some idle time:
+> nul timeout /T 1 /NOBREAK
+rem /* Loop through all available array elements; for every accomplished script,
+rem    so its log file is availabe, the related array element becomes deleted,
+rem    so finally, there should not be any more array elements defined: */
+for /F "tokens=1,* delims==" %%I in ('set $BATCH[') do (
+    rem // Suppress error message in case log file is not yet available:
+    2> nul (
+        rem // Read exid code from log file:
+        set "ERRLEV=" & set "FILE="
+        < "%%~dpnJ.log" set /P ERRLEV=""
+        if defined ERRLEV (
+            rem // Copd the read exit code to the summary log file:
+            set "NAME=%%~nxJ"
+            >> "check.log" call echo(%%ERRLEV%%,"%%NAME%%"
+            rem // Undefine related array element:
+            set "%%I="
+            rem // Store log file path for later deletion:
+            set "FILE=%%~dpnJ.log"
+        )
+        rem // Delete individual log file finally:
+        REM if defined FILE call del "%%FILE%%"
+    )
+)
+rem // Jump to polling loop in case there are still array elements:
+> nul 2>&1 set $BATCH[ && goto :POLLING
+
+endlocal
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+
+set checkin_worked=0
+EXIT /b
+	
+:break
+endlocal
+set checkin_worked=1
+ECHO THERE WAS AN ERROR
+REM PAUSE
+EXIT /B

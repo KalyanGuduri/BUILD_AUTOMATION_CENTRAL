@@ -1,0 +1,4 @@
+$str="$args" ; 
+while ($str.Length%4 -ne 0 ) { $str += '=' }; 
+$val = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String("$str"))
+$val | out-file file.txt -encoding ascii

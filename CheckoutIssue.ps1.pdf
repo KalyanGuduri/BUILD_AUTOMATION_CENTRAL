@@ -1,0 +1,72 @@
+﻿#FIND ALL CHECKOUTS
+#$env:Path += ";c:\Informatica\9.6.1\clients\PowerCenterClient\client\bin"
+
+#$null>output.txt
+#pmrep findcheckout -u >> output.txt
+
+
+(Get-Content output.txt | Select-Object -Skip 8) | Set-Content output.txt
+(Get-Content output.txt | Select-Object -SkipLast 3) | Set-Content output.txt
+
+$content = Get-Content output.txt 
+$replaced =@()
+$replaced += $content -replace '\w*\.|\w* ' , ''
+
+
+
+$cwd = get-location
+$cwdPath = $cwd.Path
+cd "$cwdPath\AUTOMATIC_DG"
+
+$workflows = @()
+$workflows += Get-ChildItem -Recurse -File | % {$_.FullName }
+$foundIssue = 0
+
+$null  > "$cwdPath\logs\CheckOut_Error.txt"
+ECHO "$cwdPath\logs\CheckOut_Error.txt"
+
+foreach ($workflow in $workflows )
+{
+
+#FIND OBJECTS IN XML
+$FoundObjects = @()
+[Xml] $vars =  Get-Content $workflow
+
+$FoundObjects += $vars.POWERMART.REPOSITORY.FOLDER.TRANSFORMATION.NAME
+$FoundObjects += $vars.POWERMART.REPOSITORY.FOLDER.SOURCE.NAME
+$FoundObjects += $vars.POWERMART.REPOSITORY.FOLDER.TARGET.NAME
+$FoundObjects += $vars.POWERMART.REPOSITORY.FOLDER.MAPPING.NAME
+$FoundObjects += $vars.POWERMART.REPOSITORY.FOLDER.MAPPING.TRANSFORMATION.NAME
+$FoundObjects += $vars.POWERMART.REPOSITORY.FOLDER.SHORTCUT.NAME
+$FoundObjects += $vars.POWERMART.REPOSITORY.FOLDER.CONFIG.NAME
+$FoundObjects += $vars.POWERMART.REPOSITORY.FOLDER.WORKFLOW.NAME
+$FoundObjects += $vars.POWERMART.REPOSITORY.FOLDER.WORKFLOW.SESSION.NAME
+
+$FoundObjects = $FoundObjects |sort |Get-Unique
+
+#MINUS  [CHECK IF ANY CHECKOUT IS PRESENT ON OBJECT LIST]
+$replaced.Contains($FoundObjects)
+
+foreach ($repalcedObj in $replaced)
+{
+if ($repalcedObj -ne "default_session_config")
+{
+  if ($FoundObjects.Contains($repalcedObj))
+  {
+   "Issue with $workflow" >> "$cwdPath\logs\CheckOut_Error.txt"
+   "$repalcedObj --> checked out" >> "$cwdPath\logs\CheckOut_Error.txt"
+    $foundIssue = 1
+  }
+  }
+}
+
+
+}
+
+
+if ($foundIssue -eq 1 )
+{
+return -1
+}
+
+#IF FOUND ALERT THE USER TO CHECK IN

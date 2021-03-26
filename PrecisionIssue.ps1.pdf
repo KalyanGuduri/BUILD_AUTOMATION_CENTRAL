@@ -1,0 +1,45 @@
+$cwd = get-location
+$cwdPath = $cwd.Path
+cd "$cwdPath\AUTOMATIC_DG"
+
+$workflows = @()
+$workflows += Get-ChildItem -Recurse -File | % {$_.FullName }
+$foundIssue = 0 
+$null  > "$cwdPath\logs\Precision_Error.txt"
+ECHO "$cwdPath\logs\Precision_Error.txt"
+
+foreach ($workflow in $workflows )
+{
+
+[Xml] $vars =  Get-Content $workflow
+$tgtlist=@()
+$srclist=@()
+$tgtlist += $vars.POWERMART.repository.folder.target.targetfield | where {$_.precision -eq 0}  | select name
+$srclist += $vars.POWERMART.repository.folder.source.sourcefield | where {$_.precision -eq 0}  | select name
+
+
+
+
+if (($srclist.count -gt 0 )-or ($tgtlist.Count -gt 0))
+{
+  "Issue with $workflow" >> "$cwdPath\logs\Precision_Error.txt"
+  $tgtlist | foreach {$_.name} >> "$cwdPath\logs\Precision_Error.txt"
+  $srclist | foreach {$_.name} >> "$cwdPath\logs\Precision_Error.txt"
+
+$foundIssue = 1
+}
+
+}
+
+
+if ($foundIssue -ne 1)
+{
+remove-item "$cwdPath\logs\Precision_Error.txt"
+}
+
+
+
+if ($foundIssue -eq 1)
+{
+return -1
+}

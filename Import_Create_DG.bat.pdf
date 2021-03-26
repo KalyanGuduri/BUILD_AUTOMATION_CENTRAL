@@ -1,0 +1,622 @@
+@ECHO off
+rem Get start time:
+
+for /F "tokens=1-4 delims=:.," %%a in ("%time%") do (
+   set /A "start=(((%%a*60)+1%%b %% 100)*60+1%%c %% 100)*100+1%%d %% 100"
+)
+
+for /F "usebackq tokens=1,2 delims==" %%i in (`wmic os get LocalDateTime /VALUE 2^>NUL`) do if '.%%i.'=='.LocalDateTime.' set ldt=%%j
+set ldt_1=%ldt:~0,4%-%ldt:~4,2%-%ldt:~6,2% %ldt:~8,2%:%ldt:~10,2%:%ldt:~12,6%
+
+cls
+setlocal enabledelayedexpansion
+if EXIST C:\Informatica\10.2.0_HF1\clients\PowerCenterClient\domains.infa (
+set INFA_DOMAINS_FILE=C:\Informatica\10.2.0_HF1\clients\PowerCenterClient\domains.infa
+ ) ELSE (
+set INFA_DOMAINS_FILE=C:\Informatica\10.2.0\clients\PowerCenterClient\domains.infa )
+set INFA_HOME=C:\Informatica\10.2.0_HF1
+echo !INFA_DOMAINS_FILE! is found
+set PATH=%PATH%;c:\Informatica\10.2.0_HF1\clients\PowerCenterClient\client\bin
+set CWD=%5
+set CWD=!CWD:\\=\!
+set Log_Dir=!CWD!\logs
+SET INFA_REPO_NAME=%7
+SET INFA_DOMAIN=%8
+CD /d !CWD!
+Powershell.exe -executionpolicy remotesigned -File "decode.ps1" aWh1Yl90ZXN0
+set /p INFA_PM_USER=<file.txt
+Powershell.exe -executionpolicy remotesigned -File "decode.ps1" MWh1Yl90MzV0
+set /p INFA_PM_PASSWORD=<file.txt
+del file.txt
+SET USER_DG_NAME=%6
+SET SRC_INFA_REPO_NAME=%1
+SET SRC_INFA_DOMAIN=%2
+set svnpath="%9"
+shift
+SET FILE=%9
+shift
+SET !respo!=%9
+CD /d !CWD!
+REM ECHO current: %CWD%
+REM Echo.
+REM ECHO infa_repo: !INFA_REPO_NAME! infa_domain: !INFA_DOMAIN! dg_name: !USER_DG_NAME! src_name: !SRC_INFA_REPO_NAME! src_domain: !SRC_INFA_DOMAIN! svnpath: !svnpath! file: !FILE!
+echo !respo! > whatisit.txt
+
+
+	REM ======================== FOLDER CHECK  ==================================================
+    
+	echo  Import_Create_DG.bat started at [%ldt_1%] >> !Log_Dir!\Timestamps.txt
+	
+	REM for /F "usebackq tokens=1,2 delims==" %%i in (`wmic os get LocalDateTime /VALUE 2^>NUL`) do if '.%%i.'=='.LocalDateTime.' set ldt=%%j
+    REM set ldt=%ldt:~0,4%-%ldt:~4,2%-%ldt:~6,2% %ldt:~8,2%:%ldt:~10,2%:%ldt:~12,6%
+    REM echo INFORMATICA installation Folder Check started at [%ldt%] > !Log_Dir!\Timestamps.txt
+	
+	
+	IF NOT EXIST c:\Informatica\10.2.0_HF1\clients\PowerCenterClient\client\bin (
+	ECHO INFORMATICA IS NOT INSTALLED IN THE SPECIFIED DIRECTORY_NEW
+	EXIT /B )
+	
+	IF NOT EXIST "!Log_Dir!" mkdir "!Log_Dir!"
+	
+	REM for /F "usebackq tokens=1,2 delims==" %%i in (`wmic os get LocalDateTime /VALUE 2^>NUL`) do if '.%%i.'=='.LocalDateTime.' set ldt=%%j
+    REM set ldt=%ldt:~0,4%-%ldt:~4,2%-%ldt:~6,2% %ldt:~8,2%:%ldt:~10,2%:%ldt:~12,6%
+    REM echo Informatica installation Folder check ended at [%ldt%]	>> !Log_Dir!\Timestamps.txt	
+	
+	break >!Log_Dir!\logfile.txt 
+	break >!Log_Dir!\errorlog.txt
+	
+	
+	REM ren "Jira.csv" "Jira.csv"
+	REM IF NOT !ERRORLEVEL! == 0 (
+	REM				ECHO COULD NOT OPEN THE FILE Jira.csv 
+	REM				EXIT /B
+	REM			)
+	
+
+	
+	
+	REM ======================== SETS THE REPO INFORMATION ======================================
+	REM for /F "usebackq tokens=1,2 delims==" %%i in (`wmic os get LocalDateTime /VALUE 2^>NUL`) do if '.%%i.'=='.LocalDateTime.' set ldt=%%j
+    REM set ldt=%ldt:~0,4%-%ldt:~4,2%-%ldt:~6,2% %ldt:~8,2%:%ldt:~10,2%:%ldt:~12,6%
+    REM echo INFA Repo information setting started at [%ldt%] >> !Log_Dir!\Timestamps.txt
+	REM INTERACTIVE :  
+	REM	call Locations.bat 
+	REM END INTERACTIVE
+	
+	REM STATIC : 
+	 	REM set INFA_REPO_NAME=PC_REPO_STL_WEST_ILMD_DEV1
+		REM set INFA_DOMAIN=Domain_STL_WEST_DEV_SIT
+	REM END STATIC
+
+    REM for /F "usebackq tokens=1,2 delims==" %%i in (`wmic os get LocalDateTime /VALUE 2^>NUL`) do if '.%%i.'=='.LocalDateTime.' set ldt=%%j
+    REM set ldt=%ldt:~0,4%-%ldt:~4,2%-%ldt:~6,2% %ldt:~8,2%:%ldt:~10,2%:%ldt:~12,6%
+    REM echo INFA Repo information setting ended at  [%ldt%] >> !Log_Dir!\Timestamps.txt
+
+	
+	IF !INFA_REPO_NAME! == "" (
+	ECHO YOU DIDNT SELECT A VALID REPO NAME
+	EXIT /B
+	)
+
+	
+	REM CLS
+	REM ======================== SETS THE USERNAME/PASSWORD =====================================
+	
+	Echo.
+	Echo **************************** USER LOGIN ***********************************
+	Echo.
+
+    REM for /F "usebackq tokens=1,2 delims==" %%i in (`wmic os get LocalDateTime /VALUE 2^>NUL`) do if '.%%i.'=='.LocalDateTime.' set ldt=%%j
+    REM set ldt=%ldt:~0,4%-%ldt:~4,2%-%ldt:~6,2% %ldt:~8,2%:%ldt:~10,2%:%ldt:~12,6%
+    REM echo USER INFORMATICA LOGGING started at [%ldt%] >> !Log_Dir!\Timestamps.txt
+	
+	REM INTERACTIVE : 
+	REM set /p INFA_PM_USER= Enter User Name  
+	REM Call:InputPassword "Enter Password" INFA_PM_PASSWORD
+	SET SECURITY_DOMAIN=Native
+	REM END INTERACTIVE  
+	
+	REM STATIC : 
+	
+
+	 SET SECURITY_DOMAIN=Native
+	
+	REM END STATIC 
+
+	REM ======================== CONNECT TO INFORMATICA =========================================
+
+
+	pmrep connect -r !INFA_REPO_NAME! -d  !INFA_DOMAIN! -n !INFA_PM_USER! -s !SECURITY_DOMAIN! -x !INFA_PM_PASSWORD!   >>!Log_Dir!\logfile.txt 2>>!Log_Dir!\errorlog.txt
+    		  IF NOT %ERRORLEVEL% == 0 (
+		  ECHO COULD NOT CONNECT
+		  EXIT /B
+		  )
+
+	ECHO.
+
+	REM for /F "usebackq tokens=1,2 delims==" %%i in (`wmic os get LocalDateTime /VALUE 2^>NUL`) do if '.%%i.'=='.LocalDateTime.' set ldt=%%j
+    REM set ldt=%ldt:~0,4%-%ldt:~4,2%-%ldt:~6,2% %ldt:~8,2%:%ldt:~10,2%:%ldt:~12,6%
+    REM echo USER INFORMATICA LOGGING ended at [%ldt%] >> !Log_Dir!\Timestamps.txt
+	
+	ECHO LOGIN SUCCESSFUL !
+	
+	REM CLS
+	
+	
+	REM ======================== SET VAR FOR DG CREATION =========================================
+	
+	break>workflow.lst
+	break>folders.lst
+	ECHO.
+	REM Echo Example DG NAME  = DG_ITERATION_99
+	echo.
+	REM set /p USER_DG_NAME=ENTER THE DG : 
+	REM echo !USER_DG_NAME!
+	REM set /p USER_COMMENTS=ENTER YOUR COMMENTS : 
+	
+			
+	
+	set OUTPUT_DIR=!outdir!
+	set OUTPUT_LOC=!outdir!!USER_DG_NAME!.xml
+	set OUTPUT_LOC=!OUTPUT_LOC:/=\!
+	set OUTPUT_DIR=!OUTPUT_DIR:/=\!
+	
+
+	REM ======================== SETS THE SRC SVN REPO INFORMATION ======================================
+
+	REM INTERACTIVE :  
+	REM	call src_locations.bat 
+	REM END INTERACTIVE
+	
+	REM STATIC : 
+	 	REM set INFA_REPO_NAME=PC_REPO_STL_WEST_ILMD_DEV1
+		REM set INFA_DOMAIN=Domain_STL_WEST_DEV_SIT
+	REM END STATIC
+	
+	IF !SRC_INFA_REPO_NAME! == "" (
+	ECHO YOU DIDNT SELECT A VALID REPO NAME
+	EXIT /B
+	)
+
+	REM CLS
+	REM ======================== SVN CONFIGURATION  =============================================
+	
+	REM ENSURE THERE ARE NO SPACES AFTER THE VARIABLES
+	
+	REM set svnpath="https://wts-svn.usa.wachovia.net/ihub/trunk/Build_Automation_Central/ETL/!SRC_INFA_REPO_NAME!/"
+	REM set svnpath="%9"
+	REM Echo.
+	REM ECHO svnpath--: !svnpath!
+	REM ====== EXTRACT THE PATH FOR LOCAL SAVING ============			 
+				 
+	FOR /f "tokens=2* delims=/" %%a in (!svnpath!) do (
+		set int_path=%%b
+	)
+	set outdir=!CWD!/SVN/!int_path!
+	set OUTPUT_DIR=!outdir!
+	set OUTPUT_DIR=!OUTPUT_DIR:/=\!
+	
+	REM ====== MAKES THE OUPUT DIR FOR SAVING =================
+	
+    
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	cd /d !CWD!
+	break > output.xml
+	break > out.lst
+	REM CLS
+	Powershell.exe -executionpolicy remotesigned -File "Etl_Log.ps1" ETL/!SRC_INFA_REPO_NAME! 
+	REM ================== CHECK TO SEE IF JIRAS ARE PRESENT IN SVN ===========================
+	
+	REM echo !OUTPUT_DIR!
+	
+			REM Echo.
+			REM Echo ***************** FINDING JIRAS IN SVN *********************************
+			REM Echo.
+
+
+			
+	
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+			
+for /F "usebackq tokens=1,2 delims==" %%i in (`wmic os get LocalDateTime /VALUE 2^>NUL`) do if '.%%i.'=='.LocalDateTime.' set ldt=%%j
+set ldt=%ldt:~0,4%-%ldt:~4,2%-%ldt:~6,2% %ldt:~8,2%:%ldt:~10,2%:%ldt:~12,6%
+echo Downloading found files from GIT ended at [%ldt%] >> !Log_Dir!\Timestamps.txt
+	
+CD !CWD!
+
+	SET size=0 
+    for /f %%i in ("out.lst") do set size=%%~zi
+     
+    if !size! == 0 (  
+    Echo Could Not Find Specified Jira's In GIT 
+    exit /B 
+    ) 	
+
+    REM for /F "usebackq tokens=1,2 delims==" %%i in (`wmic os get LocalDateTime /VALUE 2^>NUL`) do if '.%%i.'=='.LocalDateTime.' set ldt=%%j
+    REM set ldt=%ldt:~0,4%-%ldt:~4,2%-%ldt:~6,2% %ldt:~8,2%:%ldt:~10,2%:%ldt:~12,6%
+    REM echo INFORMATICA MAPPING PRECISION CHECK started at [%ldt%]	>> !Log_Dir!\Timestamps.txt
+	
+	FOR /F "delims=" %%i IN ('Powershell.exe -executionpolicy remotesigned -File "PrecisionIssue.ps1"') DO set RESULT1=%%i
+
+	REM for /F "usebackq tokens=1,2 delims==" %%i in (`wmic os get LocalDateTime /VALUE 2^>NUL`) do if '.%%i.'=='.LocalDateTime.' set ldt=%%j
+    REM set ldt=%ldt:~0,4%-%ldt:~4,2%-%ldt:~6,2% %ldt:~8,2%:%ldt:~10,2%:%ldt:~12,6%
+    REM echo INFORMATICA MAPPING PRECISION CHECK ended at [%ldt%] >> !Log_Dir!\Timestamps.txt	
+	
+	if !RESULT1! EQU -1 ( 
+	ECHO.
+	Echo Invalid Precision of the fields in the mappings. 
+	type !Log_Dir!\Precision_Error.txt
+	
+	goto :break
+	exit /B
+	)
+	
+	
+	REM pause
+	
+	for /F "usebackq tokens=1,2 delims==" %%i in (`wmic os get LocalDateTime /VALUE 2^>NUL`) do if '.%%i.'=='.LocalDateTime.' set ldt=%%j
+    set ldt=%ldt:~0,4%-%ldt:~4,2%-%ldt:~6,2% %ldt:~8,2%:%ldt:~10,2%:%ldt:~12,6%
+    echo INFORMATICA MAPPING CHECHOUT CHECK started at [%ldt%]	>> !Log_Dir!\Timestamps.txt	
+	
+	pmrep findcheckout -u >> output.txt
+	ECHO Checking If any Dependend Objects are Checked out in the REPO
+	FOR /F "delims=" %%i IN ('Powershell.exe -executionpolicy remotesigned -File "CheckoutIssue.ps1"') DO set RESULT1=%%i
+	
+	for /F "usebackq tokens=1,2 delims==" %%i in (`wmic os get LocalDateTime /VALUE 2^>NUL`) do if '.%%i.'=='.LocalDateTime.' set ldt=%%j
+    set ldt=%ldt:~0,4%-%ldt:~4,2%-%ldt:~6,2% %ldt:~8,2%:%ldt:~10,2%:%ldt:~12,6%
+    echo INFORMATICA MAPPING CHECKOUT CHECK ended at [%ldt%]	>> !Log_Dir!\Timestamps.txt	
+	
+	if !RESULT1! EQU -1 ( 
+	ECHO.
+	
+	Echo Informatica has a few dependent objects in a checked out state. Please Check them In.
+	Echo Check the log folder for futher details
+	type !Log_Dir!\CheckOut_Error.txt
+	REM set /p respo1= Have you Checked the dependent objects Y or N: 
+	REM	  			    IF /I NOT !respo1!==Y  (
+		  			    ECHO EXITING...
+		  			    EXIT /B
+	REM	  			  				)
+	
+	REM goto :break
+	REM exit /B
+	)
+	
+	del output.txt
+	REM exit /b
+	
+CD !CWD!
+REM CLS
+
+for /F "usebackq tokens=1,2 delims==" %%i in (`wmic os get LocalDateTime /VALUE 2^>NUL`) do if '.%%i.'=='.LocalDateTime.' set imp_start=%%j
+set imp_start=%imp_start:~0,4%-%imp_start:~4,2%-%imp_start:~6,2% %imp_start:~8,2%:%imp_start:~10,2%:%imp_start:~12,6%
+echo INFORMATICA IMPORT OF WORKFLOWS started at [%imp_start%] >> !Log_Dir!\Timestamps.txt
+
+FOR /f "usebackq tokens=1-3 delims=," %%g in ("PS_OUTPUT.lst") do (
+
+
+			REM ================================ SETS THE VARIABLES =====================================
+			
+			ECHO.
+			set OBJECT_TYPE="workflow"
+			set WORKFLOW_NAME=%%h
+			set INFA_FOLDER_NAME=%%g
+			set JIRA_NO=%%i
+			REM set curr_folder=%%a
+			
+			REM echo %%b,%%c >> workflow.lst
+			
+				REM IF "!JIRA_NO!"=="" (
+					REM ECHO.
+					REM ECHO  YOU DIDNT ENTER A JIRA NUMBER 
+					REM EXIT /B
+					REM )
+				IF "!WORKFLOW_NAME!"=="" (
+					ECHO.
+					ECHO  YOU DIDNT ENTER A WORKFLOW NAME 
+					EXIT /B
+					)
+
+			Echo.
+			Echo ************************************************************************
+			Echo.
+			ECHO Working On Workflow : !WORKFLOW_NAME! 
+			Echo.
+			
+
+			REM ======================== MAKE THE WORKFLOW LIST =====================================
+			
+			REM CD "!OUTPUT_DIR!%%a"
+			REM for /F tokens^=2^,3^,12^,5delims^=^<^"^= %%a in (!WORKFLOW_NAME!) do (
+		    REM if "%%a" equ "WORKFLOW DESCRIPTION " echo(%%d >> !CWD!\workflow.lst 
+			REM )
+
+
+			cd !CWD!
+			set wrkflPath='!CWD!\AUTOMATIC_DG\!INFA_FOLDER_NAME!\!WORKFLOW_NAME!'
+
+			powershell.exe   -ExecutionPolicy Bypass -NoLogo -NonInteractive -NoProfile  -Command "[xml]$varaible1 = Get-Content !wrkflPath!;$count=0;ForEach ($_ in $varaible1.powermart.repository.folder){$folder=$_;ForEach ($a in $_.workflow) { $out=$a.name; $out+=\" , \"; $out+=$folder.name; $out | Out-File workflow.lst -NoClobber -Append -Encoding ASCII ; } }"
+
+			CD "!CWD!\AUTOMATIC_DG\!INFA_FOLDER_NAME!"
+			for /F tokens^=1^,2^,5delims^=^<^"^= %%b in (!WORKFLOW_NAME!) do (
+			   if "%%b" equ "FOLDER NAME" echo(%%c >> !CWD!\folders.lst   
+			)
+
+			
+
+			
+			REM ======================== IMPORT THE WF TO REPO =====================================
+			
+			echo IMPORTING THE WORKFLOWS INTO THE REPO ......
+			
+			cd !CWD!
+			
+			set xml="<?xml version="1.0" encoding="UTF-8"?> <^!DOCTYPE IMPORTPARAMS SYSTEM "C:\Informatica\10.2.0_HF1\clients\DeveloperClient\pcutils\10.2.0\impcntl.dtd"> <IMPORTPARAMS CHECKIN_AFTER_IMPORT="YES" CHECKIN_COMMENTS="!JIRA_NO!" >"
+			set xml=!xml:~1,-1!
+
+
+			for /f "usebackq tokens=1 delims=" %%a in ("folders.lst") do (
+				set folder_name=%%a
+				set folder_name=!folder_name: =!
+				set xml="!xml! <FOLDERMAP SOURCEFOLDERNAME="!folder_name!" SOURCEREPOSITORYNAME="%SRC_INFA_REPO_NAME%" TARGETFOLDERNAME="!folder_name!" TARGETREPOSITORYNAME="%INFA_REPO_NAME%"/>"
+				set xml=!xml:~1,-1!
+			)
+			
+			set xml="!xml! <RESOLVECONFLICT> <TYPEOBJECT OBJECTTYPENAME = "Aggregator" RESOLUTION="REPLACE" /> <TYPEOBJECT OBJECTTYPENAME = "App Multi-Group Source Qualifier" RESOLUTION="REPLACE" /> <TYPEOBJECT OBJECTTYPENAME = "Application Source Qualifier" RESOLUTION="REPLACE" /> <TYPEOBJECT OBJECTTYPENAME = "Assignment" RESOLUTION="REPLACE" /> <TYPEOBJECT OBJECTTYPENAME = "Command" RESOLUTION="REPLACE" /> <TYPEOBJECT OBJECTTYPENAME = "Control" RESOLUTION="REPLACE" /> <TYPEOBJECT OBJECTTYPENAME = "Custom Transformation" RESOLUTION="REPLACE" /> <TYPEOBJECT OBJECTTYPENAME = "Decision" RESOLUTION="REPLACE" /> <TYPEOBJECT OBJECTTYPENAME = "Email" RESOLUTION="REPLACE" />  <TYPEOBJECT OBJECTTYPENAME = "Expression" RESOLUTION="REPLACE" /> <TYPEOBJECT OBJECTTYPENAME = "External Procedure" RESOLUTION="REPLACE" /> <TYPEOBJECT OBJECTTYPENAME = "Filter" RESOLUTION="REPLACE" /> <TYPEOBJECT OBJECTTYPENAME = "Input transformation" RESOLUTION="REPLACE" /> <TYPEOBJECT OBJECTTYPENAME = "Joiner" RESOLUTION="REPLACE" /> <TYPEOBJECT OBJECTTYPENAME = "Lookup Procedure" RESOLUTION="REPLACE" /> <TYPEOBJECT OBJECTTYPENAME = "Mapping" RESOLUTION="REPLACE" /> <TYPEOBJECT OBJECTTYPENAME = "Mapplet" RESOLUTION="REPLACE" /> <TYPEOBJECT OBJECTTYPENAME = "MQ Source Qualifier" RESOLUTION="REPLACE" /> <TYPEOBJECT OBJECTTYPENAME = "Normalizer" RESOLUTION="REPLACE" /> <TYPEOBJECT OBJECTTYPENAME = "Output Transformation" RESOLUTION="REPLACE" /> <TYPEOBJECT OBJECTTYPENAME = "Rank" RESOLUTION="REPLACE" /> <TYPEOBJECT OBJECTTYPENAME = "Router" RESOLUTION="REPLACE" /> <TYPEOBJECT OBJECTTYPENAME = "Scheduler" RESOLUTION="REPLACE" /> <TYPEOBJECT OBJECTTYPENAME = "Session" RESOLUTION="REPLACE" /> <TYPEOBJECT OBJECTTYPENAME = "Sequence" RESOLUTION="REUSE" /> <TYPEOBJECT OBJECTTYPENAME = "SessionConfig" RESOLUTION="REUSE" /> <TYPEOBJECT OBJECTTYPENAME = "Sorter" RESOLUTION="REPLACE" /> <TYPEOBJECT OBJECTTYPENAME = "Source Definition" RESOLUTION="REPLACE" /> <TYPEOBJECT OBJECTTYPENAME = "Source Qualifier" RESOLUTION="REPLACE" /> <TYPEOBJECT OBJECTTYPENAME = "Start" RESOLUTION="REPLACE" /> <TYPEOBJECT OBJECTTYPENAME = "Target Definition" RESOLUTION="REPLACE" /> <TYPEOBJECT OBJECTTYPENAME = "Timer" RESOLUTION="REPLACE" /> <TYPEOBJECT OBJECTTYPENAME = "Stored Procedure" RESOLUTION="REPLACE" /> <TYPEOBJECT OBJECTTYPENAME = "Transaction Control" RESOLUTION="REPLACE" /> <TYPEOBJECT OBJECTTYPENAME = "Update Strategy" RESOLUTION="REPLACE" /> <TYPEOBJECT OBJECTTYPENAME = "User Defined Function" RESOLUTION="REPLACE" /> <TYPEOBJECT OBJECTTYPENAME = "Workflow" RESOLUTION="REPLACE" /> <TYPEOBJECT OBJECTTYPENAME = "Worklet" RESOLUTION="REPLACE" /> <TYPEOBJECT OBJECTTYPENAME = "XML Source Qualifier" RESOLUTION="REPLACE" /> <TYPEOBJECT OBJECTTYPENAME = "ALL" RESOLUTION="REUSE"/> </RESOLVECONFLICT> </IMPORTPARAMS>"
+			set xml=!xml:~1,-1!
+
+			echo !xml!>gen_cntrl_file
+			del folders.lst
+			
+			
+			
+			
+			cd  C:\Informatica\10.2.0_HF1\clients\PowerCenterClient\client\bin
+			pmrep objectimport -i "!CWD!\AUTOMATIC_DG\!INFA_FOLDER_NAME!\!WORKFLOW_NAME!" -c "!CWD!\gen_cntrl_file" -p >>!Log_Dir!\logfile.txt 2>>!Log_Dir!\errorlog.txt && ECHO Objects Imported   || ECHO Object Import ERROR &&  goto :break
+			REM pmrep createlabel -a !USER_DG_NAME! 2>>NULL
+
+			echo here1
+			for /f "tokens=1,2 delims=." %%a in ("!WORKFLOW_NAME!") do set SPLIT_WF_NM=%%a
+		
+			REM pmrep applylabel -a !USER_DG_NAME! -n !SPLIT_WF_NM! -o Workflow -f !INFA_FOLDER_NAME! -p both -s -m
+			
+			ECHO.
+			Echo Check The log file for Individual Object's Import status
+			ECHO.
+			Echo Done Importing
+			
+			Echo.
+			Echo ************************************************************************
+			Echo.
+			
+			 IF NOT %ERRORLEVEL% == 0 (
+				  ECHO COULD NOT IMPORT THE OBJECTS  
+				  ECHO EXITING...
+				  EXIT /B
+				  )
+			
+			
+		
+
+		 cd !CWD!
+		 REM del %%a.txt
+			REM break>workflow.lst
+			break>folders.lst
+		)
+		
+		
+		    for /F "usebackq tokens=1,2 delims==" %%i in (`wmic os get LocalDateTime /VALUE 2^>NUL`) do if '.%%i.'=='.LocalDateTime.' set imp_end=%%j
+            set imp_end=%imp_end:~0,4%-%imp_end:~4,2%-%imp_end:~6,2% %imp_end:~8,2%:%imp_end:~10,2%:%imp_end:~12,6%
+            echo INFORMATICA workflow import ended at [%imp_end%]	>> !Log_Dir!\Timestamps.txt
+
+
+
+	
+	
+	
+	
+	
+
+
+
+
+	
+	REM ======================== CREATES THE DG GROUP =====================================
+	
+	    for /F "usebackq tokens=1,2 delims==" %%i in (`wmic os get LocalDateTime /VALUE 2^>NUL`) do if '.%%i.'=='.LocalDateTime.' set ldt=%%j
+        set ldt=%ldt:~0,4%-%ldt:~4,2%-%ldt:~6,2% %ldt:~8,2%:%ldt:~10,2%:%ldt:~12,6%
+        echo INFORMATICA DG creation started at [%ldt%] >> !Log_Dir!\Timestamps.txt
+		
+		
+		pmrep createdeploymentgroup -p !USER_DG_NAME!               >>!Log_Dir!\logfile.txt 2>>!Log_Dir!\errorlog.txt    
+			
+		  IF NOT %ERRORLEVEL% == 0 (
+		  ECHO APPENDING TO EXISTING DG .. Please Verify the Objects in the DG ..
+
+		)
+
+	cd !CWD!
+	
+	FOR /f "usebackq tokens=1-2 delims=," %%g in ("PS_OUTPUT.lst") do (
+	
+
+	SET FOLD=%%h
+	SET FOLD=!FOLD:.XML=!
+	
+	REM set OUTPUT_DIR=!OUTPUT_DIR:/=\!
+	REM ECHO !FOLD!
+	ECHO.
+		pmrep addtodeploymentgroup -p !USER_DG_NAME! -n !FOLD! -o !OBJECT_TYPE!  -f %%g  -d all  >>!Log_Dir!\logfile.txt 2>>!Log_Dir!\errorlog.txt && ECHO Moving !FOLD! to !USER_DG_NAME!   || ECHO Adding to Deployment Group Failed && goto :break    
+	)
+	
+    for /F "usebackq tokens=1,2 delims==" %%i in (`wmic os get LocalDateTime /VALUE 2^>NUL`) do if '.%%i.'=='.LocalDateTime.' set ldt=%%j
+    set ldt=%ldt:~0,4%-%ldt:~4,2%-%ldt:~6,2% %ldt:~8,2%:%ldt:~10,2%:%ldt:~12,6%
+    echo INFORMATICA DG creation ended at [%ldt%] >> !Log_Dir!\Timestamps.txt	
+	
+	REM pmrep AssignPermission -o deploymentgroup -n !USER_DG_NAME! -u ihub_test -p rwx >>!Log_Dir!\logfile.txt 2>>!Log_Dir!\errorlog.txt && ECHO Adding Permissions || ECHO Error : Adding Permissions Failed 
+	Echo.
+	REM Echo Assigned Permissions to Ihub_test !
+
+	cd !cwd!
+	
+
+	
+	
+	REM ====================== ENDING ==========================================================
+
+	
+	del folders.lst >>NUL 2>>NUL
+	del out.lst >>NUL 2>>NUL
+	del PS_OUTPUT.lst >>NUL 2>>NUL
+	del svn_export.lst >>NUL 2>>NUL
+	del workflow.lst >>NUL 2>>NUL
+	del gen_cntrl_file >>NUL 2>>NUL
+	rd /s /q "!CWD!\AUTOMATIC_DG"  >>NUL 2>>NUL
+
+	ECHO.
+	ECHO JOB COMPLETED !
+	
+	rem Get end time:
+    for /F "tokens=1-4 delims=:.," %%a in ("%time%") do (
+    set /A "end=(((%%a*60)+1%%b %% 100)*60+1%%c %% 100)*100+1%%d %% 100"
+     )
+	set /A elapsed=end-start
+	set /A hh=elapsed/(60*60*100), rest=elapsed%%(60*60*100), mm=rest/(60*100), rest%%=60*100, ss=rest/100, cc=rest%%100
+    if %mm% lss 10 set mm=0%mm%
+    if %ss% lss 10 set ss=0%ss%
+    if %cc% lss 10 set cc=0%cc%
+    echo TOT_RUN_TIME is %hh%:%mm%:%ss%,%cc% >> !Log_Dir!\Timestamps.txt	
+	
+	type !Log_Dir!\logfile.txt
+	ECHO.
+	REM PAUSE
+	
+	EXIT /B
+	
+	
+	
+
+:break
+cd !cwd!
+	del folders.lst >>NUL 2>>NUL
+	del out.lst >>NUL 2>>NUL
+	del PS_OUTPUT.lst >>NUL 2>>NUL
+	del svn_export.lst >>NUL 2>>NUL
+	del workflow.lst >>NUL 2>>NUL
+	del gen_cntrl_file >>NUL 2>>NUL
+	rd /s /q "!CWD!\AUTOMATIC_DG"  >>NUL 2>>NUL
+	type NOTEPAD.EXE !Log_Dir!\logfile.txt
+	
+ECHO.
+ECHO Script Failed due to the above Error
+ECHO.
+REM PAUSE
+EXIT /B
+
+::***********************************
+:InputPassword
+
+ECHO.
+
+set "psCommand=powershell -Command "$pword = read-host '%1' -AsSecureString ; ^
+    $BSTR=[System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($pword); ^
+      [System.Runtime.InteropServices.Marshal]::PtrToStringAuto($BSTR)""
+        for /f "usebackq delims=" %%p in (`%psCommand%`) do set %2=%%p
+)
+goto :eof     
+::***********************************
+

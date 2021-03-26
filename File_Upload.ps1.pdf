@@ -1,0 +1,133 @@
+# Title       :  Script for Uploading files with jira number
+#
+# Description :  Scans the Items in Input.csv
+#                Uploads it to git with the Jira Number 
+#
+
+Remove-Variable * -ErrorAction SilentlyContinue
+
+# ================ Pre Check ==========================
+
+#Check  if the jira numbers is proper
+$location = $args.replace('\\','\')
+cd $location
+Write-Output "Currently in : $location"
+$InputCsv=".\Input_Loc.txt"
+Write-Output "Read the input file"
+
+#to do : check if they have given duplicates
+
+$FILE=Get-Content $InputCsv | ConvertFrom-Csv -Header  URL ,FILENAME, JIRA
+(Get-Content Input_Loc.txt) | Set-Content Input_Loc.txt -Encoding ascii;
+
+$LINECOUNT=0;
+$JIRAFOUNDCOUNT=0;
+$flag=0;
+
+foreach($_ in $file) {$_.jira = $_.jira.replace('_','-')}
+foreach($_ in $file) {if( $_.jira.contains('IHUBBAU-')) { $JIRAFOUNDCOUNT=$JIRAFOUNDCOUNT+1  } $LINECOUNT=$LINECOUNT+1 } ;
+
+
+
+ if ( $LINECOUNT -ne $JIRAFOUNDCOUNT )
+ {
+ 
+ Write-Output 'There is an issue with one of the Jira name [IHUBBAU-] IS NOT PRESENT'
+   $flag=-1 ;
+  }
+
+
+foreach($_ in $file) {if( $_.jira.contains('"')) {  $flag=-2 }  } ;
+
+if($flag -eq -2)
+{
+Write-Output 'There is a cell containing multiple values please verify the wf names' 
+}
+
+if($flag -ne 0)
+ {
+Write-Output "Issue With Input File" -ForegroundColor Red
+exit}
+
+
+function Get-BasicAuthCreds {
+    param([string]$Username,[string]$Password)
+    $AuthString = "{0}:{1}" -f $Username,$Password
+    $AuthBytes  = [System.Text.Encoding]::Ascii.GetBytes($AuthString)
+    return [Convert]::ToBase64String($AuthBytes)
+}
+
+
+$BasicCreds = Get-BasicAuthCreds -Username "$args[1]" -Password "$args[2]"
+
+# ================ Variable Declaration ==========================
+
+
+#exit
+$errors=0
+
+
+
+foreach ($obj in $file) 
+{
+
+
+$svn_location=$obj.URL
+$filenme=$obj.filename.Split('\')[-1]
+$fldr=$obj.URL.Split('/')[-2]+'/'+$obj.URL.Split('/')[-1]
+
+$outfile=$svn_location+'/'+$obj.filename.Split('\')[-1]
+if ( -not (Test-Path $obj.filename -PathType Leaf))
+{	
+	$wrongfile = $obj.filename.Split('\')[-1]
+	write-output "There is an issue with the filename $wrongfile "
+	$errors=1
+	continue
+}
+
+try
+{
+
+write-host "https://wfs-github.wellsfargo.com/raw/IHUB/Build_Automation_Central/master/Database/$fldr/$filenme"
+$RESULT= Invoke-WebRequest  -Uri "https://wfs-github.wellsfargo.com/raw/IHUB/Build_Automation_Central/master/Database/$fldr/$filenme" -Headers @{"Authorization"="Basic $BasicCreds"} 
+
+  svn checkout $svn_location to_upload --depth empty 
+
+  cd .\to_upload
+  svn update $obj.filename.Split('\')[-1]  
+  cd ..
+  
+  $local_path=$obj.filename
+  cp $local_path .\to_upload -Force
+ 
+  cd .\to_upload
+  svn update $obj.filename.Split('\')[-1]  
+  svn commit -m $obj.Jira  
+  cd ..
+  Remove-Item .\to_upload -Force -Recurse
+  $fileuploded = $obj.filename.Split('\')[-1]
+  Write-Output "$fileuploded  Uploaded"
+
+}
+catch
+{
+write-host "Uploading...."
+$local_path=$obj.filename
+svn import -m $obj.Jira $local_path $outfile  
+$fileuploded = $obj.filename.Split('\')[-1]
+
+Write-Output "$fileuploded  Uploaded"
+}
+
+}
+
+if($errors -eq 0)
+{
+
+Write-Output "JOB COMPLETED !"
+}
+else
+{
+Write-Output "JOB EXECUTED with errors"
+exit 
+}

@@ -1,0 +1,162 @@
+﻿# Title       :  Script for Uploading files with jira number
+#
+# Description :  Scans the Items in Input.csv
+#                Uploads it to git with the Jira Number
+#
+
+#Remove-Variable * -ErrorAction SilentlyContinue
+
+
+# ================ Pre Check ==========================
+
+$env:Path += "C:\Program Files\Git\bin"
+$ErrorActionPreference='SilentlyContinue'
+
+write-output "File_Upload.ps1 process id is $PID"
+
+
+# ================ End of Pre Check ==========================
+
+$location = $args[0].replace('\\\\','\')
+Set-Location $location
+Write-Output "Currently in : $location"
+$InputCsv=".\Input_Loc.txt"
+Write-Output "Read the input file"
+
+$user_id = $args[1]
+$pass = $args[2]
+
+while ($pass.Length%4 -ne 0 ) { $pass += '=' }; 
+
+
+
+$pass = [System.Text.Encoding]::ASCII.GetString([System.Convert]::FromBase64String("$pass"))
+function Get-BasicAuthCreds {
+    param([string]$Username,[string]$Password)
+    $AuthString = "{0}:{1}" -f $Username,$Password
+    $AuthBytes  = [System.Text.Encoding]::Ascii.GetBytes($AuthString)
+    return [Convert]::ToBase64String($AuthBytes)
+}
+
+
+$BasicCreds = Get-BasicAuthCreds -Username $user_id -Password $pass
+
+$result= Invoke-WebRequest -Uri "https://wfs-github.wellsfargo.com/api/v3/repos/IHUB/Build_Automation_Central" -Headers @{"Authorization"="Basic $BasicCreds" ; "Accept"="application/vnd.github.cloak-preview";"incomplete_results"="true";"per_page"=100}
+if ($result.StatusCode -ne 200 )
+{
+    write-host "Issue with connecting with GIT, Please check your credentials and Access"
+    1 | out-file FAIL.txt
+    exit
+} 
+
+#to do : check if they have given duplicates
+
+$FILE=Get-Content $InputCsv | ConvertFrom-Csv -Header  URL ,FILENAME, JIRA
+(Get-Content Input_Loc.txt) | Set-Content Input_Loc.txt -Encoding ascii
+write-output "$file"
+
+
+#$result = Invoke-WebRequest -Uri "https://wfs-github.wellsfargo.com/api/v3/user/emails" -Headers @{"Authorization"="Basic $BasicCreds" ; "Accept"="application/vnd.github.cloak-preview";"incomplete_results"="true";"per_page"=100}
+$result = Invoke-WebRequest -Uri "https://wfs-github.wellsfargo.com/api/v3/user/emails" -Headers @{"Authorization"="Basic $BasicCreds" ; "Accept"="application/vnd.github.cloak-preview";"incomplete_results"="true";"per_page"=100}
+
+$email =  (convertfrom-json $RESULT.Content).email
+
+foreach ($entry in $FILE)
+{
+$loc = $entry.url
+$path = ($loc -split 'trunk')[1]
+$data = gc $entry.filename -Raw
+$just_filename = $entry.filename.split('\')[-1]
+$encoded = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($data))
+$jira = $entry.jira
+
+$date_now = get-date
+write-output "`nGIT processing for $just_filename started at $date_now"
+write-output "`nGIT processing for $just_filename started at $date_now"| out-file Timestamps.txt -Append
+
+try
+{
+$msg = @{
+    committer=@{name = "$user_id"
+    email = "$email"}
+    message="$jira"
+	content = "$encoded"
+
+}
+$json = $msg | ConvertTo-Json
+write-host $path 
+
+#$result = Invoke-RestMethod -Uri "https://wfs-github.wellsfargo.com/api/v3/repos/u610046/Status/contents$path/$just_filename" -Method PUT    -Headers @{"Authorization"="Basic $BasicCreds"}  -Body $json  -ContentType 'application/json'
+$result = Invoke-RestMethod -Uri "https://wfs-github.wellsfargo.com/api/v3/repos/IHUB/Build_Automation_Central/contents$path/$just_filename" -Method PUT    -Headers @{"Authorization"="Basic $BasicCreds"}  -Body $json  -ContentType 'application/json'
+
+write-output "$just_filename is inserted"
+$errors = 0
+}
+
+catch 
+{
+#write-host  $_.Exception.Message
+
+write-output "`n$just_filename can't be inserted as it exists at target location" 
+write-output "`nAttempting to update $just_filename" 
+
+#$RESULT = Invoke-WebRequest -Uri "https://wfs-github.wellsfargo.com/api/v3/repos/u610046/Status/git/refs/heads/master" -Headers @{"Authorization"="Basic $BasicCreds" ; "Accept"="application/vnd.github.cloak-preview";"incomplete_results"="true";"per_page"=100}
+$RESULT = Invoke-RestMethod -Uri "https://wfs-github.wellsfargo.com/api/v3/repos/IHUB/Build_Automation_Central/git/refs/heads/master" -Headers @{"Authorization"="Basic $BasicCreds" ; "Accept"="application/vnd.github.cloak-preview";"incomplete_results"="true";"per_page"=100}
+$sha = $RESULT.object.sha
+
+#$RESULT = Invoke-WebRequest -Uri "https://wfs-github.wellsfargo.com/api/v3/repos/u610046/Status/git/commits/$sha" -Headers @{"Authorization"="Basic $BasicCreds" ; "Accept"="application/vnd.github.cloak-preview";"incomplete_results"="true";"per_page"=100}
+$RESULT = Invoke-RestMethod -Uri "https://wfs-github.wellsfargo.com/api/v3/repos/IHUB/Build_Automation_Central/git/commits/$sha" -Headers @{"Authorization"="Basic $BasicCreds" ; "Accept"="application/vnd.github.cloak-preview";"incomplete_results"="true";"per_page"=100}
+$sha =  $RESULT.tree.sha
+
+#$RESULT = Invoke-WebRequest -Uri "https://wfs-github.wellsfargo.com/api/v3/repos/u610046/Status/git/trees/${sha}?recursive=1" -Headers @{"Authorization"="Basic $BasicCreds" ; "Accept"="application/vnd.github.cloak-preview";"incomplete_results"="true";"per_page"=100}
+$RESULT = Invoke-RestMethod -Uri "https://wfs-github.wellsfargo.com/api/v3/repos/IHUB/Build_Automation_Central/git/trees/${sha}?recursive=1" -Headers @{"Authorization"="Basic $BasicCreds" ; "Accept"="application/vnd.github.cloak-preview";"incomplete_results"="true";"per_page"=100}
+$sha = ( $RESULT.tree | Where-Object path -ceq ("$path/$just_filename").Substring(1)).sha
+
+
+$msg = @{
+    committer=@{name = "$user_id"
+    email = "$email"}
+    message="$jira"
+	content = "$encoded"
+    sha = $sha
+}
+$json = $msg | ConvertTo-Json
+
+try
+{
+#Invoke-RestMethod -Uri "https://wfs-github.wellsfargo.com/api/v3/repos/u610046/Status/contents$path/$just_filename" -Method PUT    -Headers @{"Authorization"="Basic $BasicCreds"}  -Body $json  -ContentType 'application/json'
+Invoke-RestMethod -Uri "https://wfs-github.wellsfargo.com/api/v3/repos/IHUB/Build_Automation_Central/contents$path/$just_filename" -Method PUT    -Headers @{"Authorization"="Basic $BasicCreds"}  -Body $json  -ContentType 'application/json'
+
+write-output "`n$just_filename is updated" 
+$errors = 0
+}
+catch
+{
+#write-host  $_.Exception.Message
+write-output "`n$just_filename can't be updated at $loc due to "$_.Exception.Message"" 
+$errors = 1		   
+}
+
+
+}
+
+$date_now = get-date
+write-output "`nGIT processing for $just_filename ended at $date_now" 
+write-output "`nGIT processing for $just_filename ended at $date_now"| out-file Timestamps.txt -Append
+
+}
+
+
+
+if($errors -eq 0)
+
+{
+    Write-Output "JOB COMPLETED !"
+}
+else
+
+{
+    Write-Output "JOB EXECUTED with errors (Error code "$errors")"
+    1 | out-file FAIL.txt
+    exit
+}
